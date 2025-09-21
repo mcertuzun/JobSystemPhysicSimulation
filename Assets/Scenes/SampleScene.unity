@@ -122,6 +122,37 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &280619903
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 280619905}
+  m_Layer: 0
+  m_Name: Second
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &280619905
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 280619903}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 3.280897, y: 8.101134, z: -9.937887}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0
@@ -272,14 +303,14 @@ MonoBehaviour:
   SortAscending: 1
   InitialSpeed: 0.5
   Gravity: -9.81
-  Restitution: 0.9
-  LinearDamping: 0.02
+  Restitution: 0.001
+  LinearDamping: 0.03
   Substeps: 1
   ColliderRadius: 0.12
-  CollisionIterations: 2
+  CollisionIterations: 4
   GridCellSize: 0.12
-  ProjectionStiffness: 1
-  VelocityFromProjection: 1
+  ProjectionStiffness: 0.3
+  VelocityFromProjection: 0.2
   NearestSearchWindow: 12
   CorridorWidth: 1
   RotationEnabled: 1
@@ -351,3 +382,4 @@ SceneRoots:
   - {fileID: 519420032}
   - {fileID: 1517755087}
   - {fileID: 1541960473}
+  - {fileID: 280619905}
