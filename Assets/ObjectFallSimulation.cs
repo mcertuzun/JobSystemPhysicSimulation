@@ -14,19 +14,37 @@ using Random = Unity.Mathematics.Random;
 
 public class ObjectFallSimulation : MonoBehaviour
 {
-    [Header("Baked Level")]
-    public TextAsset BakedJson;          
-    public int PathSampleCount = 256; 
+    [Header("Baked Level")] public TextAsset BakedJson;
+    public int PathSampleCount = 256;
 
-    [Serializable] private class BakedLevel
+    [Serializable]
+    private class BakedLevel
     {
-        [Serializable] public struct PathPoint { public float x, y; }
-        [Serializable] public struct Spawner   { public float x, y; public int id; }
-        [Serializable] public struct Obstacle  { public float x, y; public float radius; public bool open; public int id; }
+        [Serializable]
+        public struct PathPoint
+        {
+            public float x, y;
+        }
+
+        [Serializable]
+        public struct Spawner
+        {
+            public float x, y;
+            public int id;
+        }
+
+        [Serializable]
+        public struct Obstacle
+        {
+            public float x, y;
+            public float radius;
+            public bool open;
+            public int id;
+        }
 
         public List<PathPoint> path = new();
-        public List<Spawner>   spawners = new();
-        public List<Obstacle>  obstacles = new();
+        public List<Spawner> spawners = new();
+        public List<Obstacle> obstacles = new();
 
         public float corridorWidth = 6f;
         public float colliderRadius = 0.06f;
@@ -43,48 +61,58 @@ public class ObjectFallSimulation : MonoBehaviour
     public int Seed = 12345;
     public bool BenchmarkEnabled = true;
     public int BenchmarkReportInterval = 120;
-    private Stopwatch swTotal = new Stopwatch();
+    private Stopwatch swTotal = new();
     private int benchFrames;
     private double sumTotal;
 
-    [Header("Spawner")]
-    public Transform SpawnPoint;
+    [Header("Spawner")] public Transform SpawnPoint;
     public Mesh QuadMesh;
     public Material ObjectMaterial;
     public int Capacity = 20000;
     public int SpawnPerSecond = 1000;
     public int BurstOnStart = 0;
     public int MaxActive = 20000;
-    public float SpawnAngleDeg = 0f; 
+    public float SpawnAngleDeg = 0f;
     public bool UseCircleJitter = true;
-    public float SpawnCircleJitterRadius = 0.5f; 
-    public Vector2 SpawnBoxJitter = new Vector2(0.5f, 0.2f); 
-    public List<Sprite> Sprites;                 
-    public bool BuildArrayAtRuntime = true;   
+    public float SpawnCircleJitterRadius = 0.5f;
+    public Vector2 SpawnBoxJitter = new(0.5f, 0.2f);
+    public List<Sprite> Sprites;
+    public bool BuildArrayAtRuntime = true;
     public FilterMode SpriteFilter = FilterMode.Bilinear;
-    public Vector2Int SpriteSize = new Vector2Int(128, 128); 
+    public Vector2Int SpriteSize = new(128, 128);
     private Texture2DArray spriteArray;
-    static readonly int ParticlesID = Shader.PropertyToID("_Particles");
-    static readonly int SpriteArrayID = Shader.PropertyToID("_SpriteArray");
-    
-    [Header("Sorting")]
-    public SortMode SortBy = SortMode.ByAge;  
-    public bool CpuFrontToBackSort = false;   
-    public bool SortAscending = true;        
+    private static readonly int ParticlesID = Shader.PropertyToID("_Particles");
+    private static readonly int SpriteArrayID = Shader.PropertyToID("_SpriteArray");
+
+    [Header("Sorting")] public SortMode SortBy = SortMode.ByAge;
+    public bool CpuFrontToBackSort = false;
+    public bool SortAscending = true;
     private NativeArray<float> ages;
+
     private struct SortEntry : IComparable<SortEntry>
     {
         public float Key;
-        public int   Id;
-        public int CompareTo(SortEntry other) => Key.CompareTo(other.Key);
+        public int Id;
+
+        public int CompareTo(SortEntry other)
+        {
+            return Key.CompareTo(other.Key);
+        }
     }
+
     private SortEntry[] sortScratch;
-    public enum SortMode { None, ByAge, ById }
+
+    public enum SortMode
+    {
+        None,
+        ByAge,
+        ById
+    }
+
     private NativeArray<float> angles;
-    private NativeArray<int>   spriteIndex; 
-    
-    [Header("Physics")]
-    public float InitialSpeed = 6f;
+    private NativeArray<int> spriteIndex;
+
+    [Header("Physics")] public float InitialSpeed = 6f;
     public float Gravity = -9.81f;
     public float Restitution = 0.9f;
     public float LinearDamping = 0.01f;
@@ -99,26 +127,34 @@ public class ObjectFallSimulation : MonoBehaviour
     private float HalfWidth => CorridorWidth * 0.5f;
     public bool RotationEnabled = true;
     public float SpinStrength = 0.5f;
-    
-    [Header("Path Force (optional)")]
-    public bool PathForceActive;
-    public float PathForceLookahead = 1f; 
-    public float PathForceStrength = 8f;
-    public float MinAbsX = 0.2f;  
 
-    [Header("Sleep")]
-    public float SleepVel = 0.05f;
+    [Header("Adaptive Gravity (anti-jam)")]
+    public bool AdaptiveGravityEnabled = true;
+
+    public float GravMinSpeed = 0.05f;
+    public float GravMaxSpeed = 0.20f;
+    public float GravBlockedProj = 0.002f;
+    public float GravMinScale = 0.05f;
+    public float GravRecoveryRate = 2.5f;
+    public float GravDecayRate = 6.0f;
+
+    [Header("Path Force (optional)")] public bool PathForceActive;
+    public float PathForceLookahead = 1f;
+    public float PathForceStrength = 8f;
+    public float MinAbsX = 0.2f;
+
+    [Header("Sleep")] public float SleepVel = 0.05f;
     public float WakeVel = 0.08f;
     public float SleepProjTol = 0.002f;
     public int SleepFrames = 6;
 
-    [Header("Despawn (Y-threshold)")]
-    public bool DespawnBelowYEnabled = true;
+    [Header("Despawn (Y-threshold)")] public bool DespawnBelowYEnabled = true;
     public float DespawnY = -50f;
     public bool DespawnScanRequested;
 
     [Header("Mobile Auto-Tune (optional)")]
     public bool MobileTuningEnabled;
+
     public float MobileTargetFrameTime = 1f / 60f;
     public float MobileHardFrameTime = 1f / 45f;
 
@@ -137,6 +173,8 @@ public class ObjectFallSimulation : MonoBehaviour
     private NativeArray<byte> sleeping;
     private NativeArray<ushort> sleepCounter;
     private NativeArray<float2> pathAccel;
+    private NativeArray<float> gravityScale;
+    private NativeArray<float> gravityScalePrev;
     private NativeList<int> activeIds;
     private NativeList<int> freeIds;
     private int activeCount;
@@ -151,20 +189,20 @@ public class ObjectFallSimulation : MonoBehaviour
     private float spStepLen = 1f;
 
     private GraphicsBuffer argsBuffer;
-    private ComputeBuffer instanceBufferA;
-    private ComputeBuffer instanceBufferB;
-    private bool useB;
+    private ComputeBuffer instanceBuffer;
 
     private struct ParticleGPU
     {
-        public float X, Y, R, Angle;  
-        public float SpriteIndex;      
-        public float SortKey;      
+        public float X, Y, R, Angle;
+        public float SpriteIndex;
+        public float SortKey;
     }
+
+    private NativeList<ParticleGPU> gpuPackets;
 
     private Bounds drawBounds;
     private float lastCorridorWidth = -1f;
-    
+
     [BurstCompile(FloatPrecision = FloatPrecision.Low, FloatMode = FloatMode.Fast)]
     private struct PathForceJob : IJobFor
     {
@@ -180,10 +218,18 @@ public class ObjectFallSimulation : MonoBehaviour
 
         public void Execute(int i)
         {
-            if (Alive[i] == 0) { if (i < outAccel.Length) outAccel[i] = 0f; return; }
+            if (Alive[i] == 0)
+            {
+                if (i < outAccel.Length) outAccel[i] = 0f;
+                return;
+            }
 
             int index = NearestId[i];
-            if (index < 0 || index >= SpPos.Length) { outAccel[i] = 0f; return; }
+            if (index < 0 || index >= SpPos.Length)
+            {
+                outAccel[i] = 0f;
+                return;
+            }
 
             int j = math.min(SpPos.Length - 1, index + math.max(1, LookaheadSamples));
             float2 p = Positions[i];
@@ -191,12 +237,20 @@ public class ObjectFallSimulation : MonoBehaviour
 
             float2 d = target - p;
             float len = math.length(d);
-            if (len <= 1e-6f) { outAccel[i] = 0f; return; }
+            if (len <= 1e-6f)
+            {
+                outAccel[i] = 0f;
+                return;
+            }
 
             float2 n = d / len;
-            if (math.abs(n.x) < minAbsX) { outAccel[i] = 0f; return; }
+            if (math.abs(n.x) < minAbsX)
+            {
+                outAccel[i] = 0f;
+                return;
+            }
 
-            n.y = 0; 
+            n.y = 0;
             outAccel[i] = n * Strength;
         }
     }
@@ -213,32 +267,33 @@ public class ObjectFallSimulation : MonoBehaviour
         [ReadOnly] public NativeArray<byte> Sleeping;
         [ReadOnly] public NativeArray<float2> PathAccel;
         public float PathForceEnabled;
+        [ReadOnly] public NativeArray<float> GravityScale;
 
         public NativeArray<float2> Positions;
         public NativeArray<float2> Velocities;
         public NativeArray<float> Ages;
-        public float RotationEnabled; 
-        public float SpinStrength;   
+        public float RotationEnabled;
+        public float SpinStrength;
         public NativeArray<float> Angles;
-        
+
         public void Execute(int i)
         {
             if (Alive[i] == 0) return;
             bool isSleep = Sleeping[i] != 0;
 
-            float2 aPf = PathAccel.IsCreated ? (PathAccel[i] * PathForceEnabled) : 0f;
+            float2 aPf = PathAccel.IsCreated ? PathAccel[i] * PathForceEnabled : 0f;
 
             float2 p = Positions[i];
             float2 v = Velocities[i];
             float ang = Angles.IsCreated ? Angles[i] : 0f;
 
             float h = DT / math.max(1, Substeps);
+            float gScale = GravityScale.IsCreated && i < GravityScale.Length ? math.clamp(GravityScale[i], 0f, 1f) : 1f;
 
             for (int s = 0; s < Substeps; s++)
-            {
                 if (!isSleep)
                 {
-                    float2 a = Accel + aPf;
+                    float2 a = Accel * gScale + aPf;
                     v += a * h;
                     p += v * h;
 
@@ -246,11 +301,10 @@ public class ObjectFallSimulation : MonoBehaviour
                 }
                 else
                 {
-                    v *= (1f - LinearDamping * 0.1f);
+                    v *= 1f - LinearDamping * 0.1f;
                 }
-            }
 
-            v *= (1f - LinearDamping);
+            v *= 1f - LinearDamping;
 
             Positions[i] = p;
             Velocities[i] = v;
@@ -269,7 +323,10 @@ public class ObjectFallSimulation : MonoBehaviour
         public NativeMultiHashMap<int, int>.ParallelWriter Writer;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int HashCell(int2 c) => c.x * 73856093 ^ c.y * 19349663;
+        private int HashCell(int2 c)
+        {
+            return (c.x * 73856093) ^ (c.y * 19349663);
+        }
 
         public void Execute(int i)
         {
@@ -281,7 +338,7 @@ public class ObjectFallSimulation : MonoBehaviour
     }
 
     [BurstCompile(FloatPrecision = FloatPrecision.Low, FloatMode = FloatMode.Fast)]
-    private struct CollisionProjectJob : IJobFor
+    private struct CombinedProjectionJob : IJobFor
     {
         [ReadOnly] public NativeArray<float2> Positions;
         [ReadOnly] public NativeArray<byte> Alive;
@@ -292,21 +349,35 @@ public class ObjectFallSimulation : MonoBehaviour
         public float Radius;
         public float Stiffness;
 
-        public NativeArray<float2> ProjDelta;
+        [ReadOnly] public NativeArray<float2> ObstPos;
+        [ReadOnly] public NativeArray<float2> ObstHalf;
+        [ReadOnly] public NativeArray<byte> ObstBlock;
+        public float ParticleRadius;
+
+        public NativeArray<float2> OutPeer;
+        public NativeArray<float2> OutObs;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private int HashCell(int2 c) => c.x * 73856093 ^ c.y * 19349663;
+        private int HashCell(int2 c)
+        {
+            return (c.x * 73856093) ^ (c.y * 19349663);
+        }
 
         public void Execute(int i)
         {
-            if (Alive[i] == 0) { if (i < ProjDelta.Length) ProjDelta[i] = 0f; return; }
+            if (Alive[i] == 0)
+            {
+                if (i < OutPeer.Length) OutPeer[i] = 0f;
+                if (i < OutObs.Length) OutObs[i] = 0f;
+                return;
+            }
 
             float2 pi = Positions[i];
             int2 c0 = (int2)math.floor((pi - Origin) * InvCell);
 
             float rSum = Radius * 2f;
             float r2 = rSum * rSum;
-            float2 corr = 0f;
+            float2 corrPeer = 0f;
 
             for (int oy = -1; oy <= 1; oy++)
             for (int ox = -1; ox <= 1; ox++)
@@ -314,7 +385,6 @@ public class ObjectFallSimulation : MonoBehaviour
                 int key = HashCell(new int2(c0.x + ox, c0.y + oy));
                 int j;
                 if (CellMap.TryGetFirstValue(key, out j, out NativeMultiHashMapIterator<int> it))
-                {
                     do
                     {
                         if (j == i || Alive[j] == 0) continue;
@@ -322,83 +392,76 @@ public class ObjectFallSimulation : MonoBehaviour
                         float d2 = math.lengthsq(d);
                         if (d2 > 1e-12f && d2 < r2)
                         {
-                            float dist = math.sqrt(d2);
-                            float overlap = (rSum - dist);
-                            float2 n = d / dist;
-                            corr += 0.5f * overlap * n;
+                            float invDist = math.rsqrt(d2 + 1e-12f);
+                            float dist = math.rcp(invDist);
+                            float overlap = rSum - dist;
+                            float2 n = d * invDist;
+                            corrPeer += 0.5f * overlap * n;
                         }
                     } while (CellMap.TryGetNextValue(out j, ref it));
-                }
-            }
-            ProjDelta[i] = corr * math.clamp(Stiffness, 0f, 1f);
-        }
-    }
-
-    [BurstCompile(FloatPrecision = FloatPrecision.Low, FloatMode = FloatMode.Fast)]
-    private struct ObstacleProjectJob : IJobFor
-    {
-        [ReadOnly] public NativeArray<float2> Positions;
-        [ReadOnly] public NativeArray<byte>   Alive;
-
-        [ReadOnly] public NativeArray<float2> ObstPos;  
-        [ReadOnly] public NativeArray<float2> ObstHalf; 
-        [ReadOnly] public NativeArray<byte>   ObstBlock; 
-
-        public float ParticleRadius;
-        public float Stiffness;
-
-        public NativeArray<float2> ProjDeltaObs;
-
-        public void Execute(int i)
-        {
-            if (Alive[i] == 0)
-            {
-                if (i < ProjDeltaObs.Length) ProjDeltaObs[i] = 0f;
-                return;
             }
 
-            float2 p = Positions[i];
-            float2 corr = 0f;
-
+            float2 corrObs = 0f;
             for (int k = 0; k < ObstPos.Length; k++)
             {
-                if (ObstBlock[k] == 0) continue; 
+                if (ObstBlock.Length > 0 && ObstBlock[k] == 0) continue;
 
-                float2 c    = ObstPos[k];
+                float2 c = ObstPos[k];
                 float2 half = ObstHalf[k];
 
                 float2 min = c - half - ParticleRadius;
                 float2 max = c + half + ParticleRadius;
 
-                if (p.x > min.x && p.x < max.x && p.y > min.y && p.y < max.y)
+                if ((pi.x > min.x) & (pi.x < max.x) & (pi.y > min.y) & (pi.y < max.y))
                 {
-                    float dl = p.x - min.x;
-                    float dr = max.x - p.x;
-                    float db = p.y - min.y;
-                    float dt = max.y - p.y;
+                    float dl = pi.x - min.x;
+                    float dr = max.x - pi.x;
+                    float db = pi.y - min.y;
+                    float dt = max.y - pi.y;
 
-                    float m = dl; int axis = 0; float sign = -1f;
-                    if (dr < m) { m = dr; axis = 0; sign = +1f; }
-                    if (db < m) { m = db; axis = 1; sign = -1f; }
-                    if (dt < m) { m = dt; axis = 1; sign = +1f; }
+                    float m = dl;
+                    int axis = 0;
+                    float sign = -1f;
+                    if (dr < m)
+                    {
+                        m = dr;
+                        axis = 0;
+                        sign = +1f;
+                    }
 
-                    corr += axis == 0 ? new float2(sign * m, 0f) : new float2(0f, sign * m);
+                    if (db < m)
+                    {
+                        m = db;
+                        axis = 1;
+                        sign = -1f;
+                    }
+
+                    if (dt < m)
+                    {
+                        m = dt;
+                        axis = 1;
+                        sign = +1f;
+                    }
+
+                    corrObs += axis == 0 ? new float2(sign * m, 0f) : new float2(0f, sign * m);
                 }
             }
 
-            ProjDeltaObs[i] = corr * math.clamp(Stiffness, 0f, 1f);
+            float stiff = math.clamp(Stiffness, 0f, 1f);
+            OutPeer[i] = corrPeer * stiff;
+            OutObs[i] = corrObs * stiff;
         }
     }
 
-
     [BurstCompile(FloatPrecision = FloatPrecision.Low, FloatMode = FloatMode.Fast)]
-    private struct ApplyProjectionJob : IJobFor
+    private struct ApplyProjectionDualJob : IJobFor
     {
         public float DT;
         public float VelFactor;
 
         [ReadOnly] public NativeArray<byte> Alive;
-        [ReadOnly] public NativeArray<float2> ProjDelta;
+        [ReadOnly] public NativeArray<float2> Peer;
+        [ReadOnly] public NativeArray<float2> Obs;
 
         public NativeArray<float2> Positions;
         public NativeArray<float2> Velocities;
@@ -406,12 +469,12 @@ public class ObjectFallSimulation : MonoBehaviour
         public void Execute(int i)
         {
             if (Alive[i] == 0) return;
-            float2 dp = ProjDelta[i];
+            float2 dp = Peer[i] + Obs[i];
             if (math.all(dp == 0f)) return;
 
             Positions[i] += dp;
             if (DT > 1e-6f && VelFactor > 0f)
-                Velocities[i] += (dp / DT) * VelFactor;
+                Velocities[i] += dp / DT * VelFactor;
         }
     }
 
@@ -448,8 +511,13 @@ public class ObjectFallSimulation : MonoBehaviour
             for (int k = start; k <= end; k++)
             {
                 float d2 = math.lengthsq(p - SpPos[k]);
-                if (d2 < best) { best = d2; bestIndex = k; }
+                if (d2 < best)
+                {
+                    best = d2;
+                    bestIndex = k;
+                }
             }
+
             nearest = bestIndex;
 
             float2 c = SpPos[nearest];
@@ -474,7 +542,7 @@ public class ObjectFallSimulation : MonoBehaviour
     }
 
     [BurstCompile(FloatPrecision = FloatPrecision.Low, FloatMode = FloatMode.Fast)]
-    private struct SleepCheckJob : IJobFor
+    private struct CombinedStateJob : IJobFor
     {
         [ReadOnly] public NativeArray<byte> Alive;
         [ReadOnly] public NativeArray<float2> Velocities;
@@ -489,35 +557,109 @@ public class ObjectFallSimulation : MonoBehaviour
         public NativeArray<byte> Sleeping;
         public NativeArray<ushort> SleepCounter;
 
+        public float Dt;
+        public float MinSpeed;
+        public float MaxSpeed;
+        public float BlockedProjTol;
+        public float MinScale;
+        public float RecoveryRate;
+        public float DecayRate;
+        public float AdaptiveEnabled;
+
+        [ReadOnly] public NativeArray<float> PrevScale;
+        public NativeArray<float> OutScale;
+
         public void Execute(int i)
         {
             if (Alive[i] == 0)
             {
-                Sleeping[i] = 0; SleepCounter[i] = 0;
+                Sleeping[i] = 0;
+                SleepCounter[i] = 0;
+                if (i < OutScale.Length) OutScale[i] = 1f;
                 return;
             }
 
-            float v2 = math.lengthsq(Velocities[i]);
-            float proj = math.length(ProjPeer[i]) + math.length(ProjObs[i]);
+            float2 v2d = Velocities[i];
+            float v2 = math.lengthsq(v2d);
+            float projSum = math.length(ProjPeer[i]) + math.length(ProjObs[i]);
 
             if (Sleeping[i] == 0)
             {
-                if (v2 < SleepVel2 && proj < SleepProjTol)
+                if (v2 < SleepVel2 && projSum < SleepProjTol)
                 {
                     ushort c = (ushort)math.min(65535, SleepCounter[i] + 1);
                     SleepCounter[i] = c;
                     if (c >= SleepFrames) Sleeping[i] = 1;
                 }
-                else SleepCounter[i] = 0;
+                else
+                {
+                    SleepCounter[i] = 0;
+                }
             }
             else
             {
-                if (v2 > WakeVel2 || proj > SleepProjTol * 2f)
+                if (v2 > WakeVel2 || projSum > SleepProjTol * 2f)
                 {
                     Sleeping[i] = 0;
                     SleepCounter[i] = 0;
                 }
             }
+
+            float sPrev = PrevScale.IsCreated && i < PrevScale.Length ? PrevScale[i] : 1f;
+            float s = sPrev;
+
+            if (AdaptiveEnabled > 0.5f)
+            {
+                float v = math.sqrt(v2);
+                bool blocked = projSum > BlockedProjTol;
+
+                s = blocked & (v < MinSpeed)
+                    ? math.lerp(sPrev, math.clamp(MinScale, 0f, 1f), math.saturate(DecayRate * Dt))
+                    : (v > MaxSpeed) | !blocked
+                        ? math.lerp(sPrev, 1f, math.saturate(RecoveryRate * Dt))
+                        : sPrev;
+
+                s = math.clamp(s, MinScale, 1f);
+            }
+            else
+            {
+                s = 1f;
+            }
+
+            OutScale[i] = s;
+        }
+    }
+
+    [BurstCompile(FloatPrecision = FloatPrecision.Low, FloatMode = FloatMode.Fast)]
+    private struct PackGPUJobA : IJobFor
+    {
+        [ReadOnly] public NativeArray<byte> Alive;
+        [ReadOnly] public NativeArray<float2> Positions;
+        [ReadOnly] public NativeArray<float> Angles;
+        [ReadOnly] public NativeArray<int> SpriteIndex;
+        [ReadOnly] public NativeArray<float> Ages;
+
+        public float ColliderRadius;
+        public int SortMode;
+
+        public NativeList<ParticleGPU>.ParallelWriter Writer;
+
+        public void Execute(int i)
+        {
+            if (Alive[i] == 0) return;
+            float2 p = Positions[i];
+
+            float sortKey = 0f;
+            if (SortMode == 1) sortKey = Ages.IsCreated ? Ages[i] : 0f;
+            else if (SortMode == 2) sortKey = i;
+
+            Writer.AddNoResize(new ParticleGPU
+            { X = p.x,
+              Y = p.y,
+              R = ColliderRadius,
+              Angle = Angles.IsCreated ? Angles[i] : 0f,
+              SpriteIndex = SpriteIndex.IsCreated ? SpriteIndex[i] : 0,
+              SortKey = sortKey });
         }
     }
 
@@ -544,12 +686,13 @@ public class ObjectFallSimulation : MonoBehaviour
         LoadBakedAndBuildPathAndObstacles();
 
         SetupGridFromPath();
+        lastHandle.Complete();
         PrimeSpawn();
 
         SetupIndirectRendering();
-        BuildSpriteArrayIfNeeded(); 
+        BuildSpriteArrayIfNeeded();
         UpdateDrawBounds();
-     
+
         lastCorridorWidth = CorridorWidth;
     }
 
@@ -569,32 +712,41 @@ public class ObjectFallSimulation : MonoBehaviour
 
         positions = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         velocities = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        alive     = new NativeArray<byte>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+        alive = new NativeArray<byte>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
 
         spPos = new NativeArray<float2>(math.max(2, PathSampleCount), Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         spTan = new NativeArray<float2>(math.max(2, PathSampleCount), Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
         nearestIndices = new NativeArray<int>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        projDelta      = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-        projDeltaObs   = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        projDelta = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        projDeltaObs = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
-        sleeping     = new NativeArray<byte>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+        sleeping = new NativeArray<byte>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
         sleepCounter = new NativeArray<ushort>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
 
-        pathAccel    = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+        pathAccel = new NativeArray<float2>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+        gravityScale = new NativeArray<float>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        gravityScalePrev = new NativeArray<float>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
-        angles      = new NativeArray<float>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+        angles = new NativeArray<float>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         spriteIndex = new NativeArray<int>(Capacity, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         ages = new NativeArray<float>(Capacity, Allocator.Persistent, NativeArrayOptions.ClearMemory);
 
         int cellCapacity = math.max(4096, Capacity * 5);
         cellMap = new NativeMultiHashMap<int, int>(cellCapacity, Allocator.Persistent);
 
-        for (int i = 0; i < Capacity; i++) nearestIndices[i] = -1;
+        for (int i = 0; i < Capacity; i++)
+        {
+            nearestIndices[i] = -1;
+            gravityScale[i] = 1f;
+            gravityScalePrev[i] = 1f;
+        }
 
         activeIds = new NativeList<int>(Capacity, Allocator.Persistent);
-        freeIds   = new NativeList<int>(Capacity, Allocator.Persistent);
+        freeIds = new NativeList<int>(Capacity, Allocator.Persistent);
         for (int i = 0; i < Capacity; i++) freeIds.Add(i);
+
+        gpuPackets = new NativeList<ParticleGPU>(Capacity, Allocator.Persistent);
 
         allocated = true;
     }
@@ -617,9 +769,12 @@ public class ObjectFallSimulation : MonoBehaviour
         if (sleeping.IsCreated) sleeping.Dispose();
         if (sleepCounter.IsCreated) sleepCounter.Dispose();
         if (pathAccel.IsCreated) pathAccel.Dispose();
+        if (gravityScale.IsCreated) gravityScale.Dispose();
+        if (gravityScalePrev.IsCreated) gravityScalePrev.Dispose();
         if (activeIds.IsCreated) activeIds.Dispose();
         if (freeIds.IsCreated) freeIds.Dispose();
         if (ages.IsCreated) ages.Dispose();
+        if (gpuPackets.IsCreated) gpuPackets.Dispose();
 
         if (angles.IsCreated) angles.Dispose();
         if (spriteIndex.IsCreated) spriteIndex.Dispose();
@@ -636,17 +791,15 @@ public class ObjectFallSimulation : MonoBehaviour
         int slices = Sprites.Count;
 
         spriteArray = new Texture2DArray(w, h, slices, TextureFormat.RGBA32, false)
-        {
-            filterMode = SpriteFilter,
-            wrapMode = TextureWrapMode.Clamp
-        };
+        { filterMode = SpriteFilter,
+          wrapMode = TextureWrapMode.Clamp };
 
         bool canCopyGPU = SystemInfo.copyTextureSupport != CopyTextureSupport.None;
 
         for (int i = 0; i < slices; i++)
         {
-            var s = Sprites[i];
-            var tex = s != null ? s.texture : Texture2D.whiteTexture;
+            Sprite s = Sprites[i];
+            Texture2D tex = s != null ? s.texture : Texture2D.whiteTexture;
             Rect r = s != null ? s.rect : new Rect(0, 0, tex.width, tex.height);
 
             int sx = Mathf.RoundToInt(r.x);
@@ -662,7 +815,7 @@ public class ObjectFallSimulation : MonoBehaviour
                 }
                 else
                 {
-                    var tmp = new Texture2D(sw, sh, TextureFormat.RGBA32, false, false);
+                    Texture2D tmp = new(sw, sh, TextureFormat.RGBA32, false, false);
                     tmp.SetPixels(tex.GetPixels(sx, sy, sw, sh));
                     tmp.Apply(false, false);
                     Graphics.CopyTexture(tmp, 0, 0, spriteArray, i, 0);
@@ -712,10 +865,9 @@ public class ObjectFallSimulation : MonoBehaviour
         List<(float2 pos, float2 half, bool open)> bakedObs = new();
 
         if (BakedJson != null && !string.IsNullOrEmpty(BakedJson.text))
-        {
             try
             {
-                var baked = JsonUtility.FromJson<BakedLevel>(BakedJson.text);
+                BakedLevel baked = JsonUtility.FromJson<BakedLevel>(BakedJson.text);
                 if (baked != null)
                 {
                     if (baked.corridorWidth > 0f) CorridorWidth = baked.corridorWidth;
@@ -723,15 +875,18 @@ public class ObjectFallSimulation : MonoBehaviour
                     if (baked.gridCellSize > 0f) GridCellSize = baked.gridCellSize;
 
                     if (baked.path != null && baked.path.Count >= 2)
-                        foreach (var p in baked.path) pathNodes.Add(new Vector2(p.x, p.y));
+                        foreach (BakedLevel.PathPoint p in baked.path)
+                            pathNodes.Add(new Vector2(p.x, p.y));
 
                     if (baked.obstacles != null && baked.obstacles.Count > 0)
-                        foreach (var o in baked.obstacles)
+                        foreach (BakedLevel.Obstacle o in baked.obstacles)
                             bakedObs.Add((new float2(o.x, o.y), math.max(0.001f, o.radius), !o.open ? true : false));
                 }
             }
-            catch (Exception e) { Debug.LogException(e); }
-        }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
 
         if (pathNodes.Count < 2)
         {
@@ -794,6 +949,7 @@ public class ObjectFallSimulation : MonoBehaviour
                 tList.Add(new float2(dir.x, dir.y));
                 t += step;
             }
+
             carried = (carried + len) % step;
         }
 
@@ -813,11 +969,13 @@ public class ObjectFallSimulation : MonoBehaviour
             spPos = new NativeArray<float2>(N, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
             spTan = new NativeArray<float2>(N, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
         }
+
         for (int i = 0; i < N; i++)
         {
             spPos[i] = pList[i];
             spTan[i] = math.normalizesafe(tList[i], new float2(1, 0));
         }
+
         PathSampleCount = N;
     }
 
@@ -825,9 +983,13 @@ public class ObjectFallSimulation : MonoBehaviour
     {
         if (!spPos.IsCreated || spPos.Length == 0) return;
         float2 mn = spPos[0], mx = spPos[0];
-        for (int i = 1; i < spPos.Length; i++) { mn = math.min(mn, spPos[i]); mx = math.max(mx, spPos[i]); }
+        for (int i = 1; i < spPos.Length; i++)
+        {
+            mn = math.min(mn, spPos[i]);
+            mx = math.max(mx, spPos[i]);
+        }
 
-        float2 pad = new float2(HalfWidth + GridCellSize * 2f);
+        float2 pad = new(HalfWidth + GridCellSize * 2f);
         mn -= pad;
         gridOrigin = mn;
 
@@ -839,18 +1001,21 @@ public class ObjectFallSimulation : MonoBehaviour
     private void PrimeSpawn()
     {
         if (SpawnPoint == null) return;
-        int toSpawn = math.min(BurstOnStart > 0 ? BurstOnStart : (SpawnPerSecond == 0 ? MaxActive : 0), MaxActive);
+        int toSpawn = math.min(BurstOnStart > 0 ? BurstOnStart : SpawnPerSecond == 0 ? MaxActive : 0, MaxActive);
         SpawnN(toSpawn);
     }
 
     private void SpawnN(int n)
     {
         if (n <= 0 || SpawnPoint == null) return;
+
+        lastHandle.Complete();
+
         int spawned = 0;
-        float2 spBase = new float2(SpawnPoint.position.x, SpawnPoint.position.y);
+        float2 spBase = new(SpawnPoint.position.x, SpawnPoint.position.y);
         float angRad = math.radians(SpawnAngleDeg);
         float2 dir = math.normalizesafe(new float2(math.cos(angRad), math.sin(angRad)), new float2(1, 0));
-        
+
         while (spawned < n && activeCount < MaxActive && freeIds.Length > 0)
         {
             int last = freeIds.Length - 1;
@@ -862,15 +1027,16 @@ public class ObjectFallSimulation : MonoBehaviour
             {
                 float r = rng.NextFloat(0f, 1f);
                 float ang = rng.NextFloat(0f, math.PI * 2f);
-                float rr = math.sqrt(r) * SpawnCircleJitterRadius; 
+                float rr = math.sqrt(r) * SpawnCircleJitterRadius;
                 jitter = new float2(math.cos(ang), math.sin(ang)) * rr;
             }
             else
             {
                 jitter = new float2(rng.NextFloat(-SpawnBoxJitter.x, +SpawnBoxJitter.x), rng.NextFloat(-SpawnBoxJitter.y, +SpawnBoxJitter.y));
             }
+
             float2 sp = spBase + jitter;
-          
+
             if (!math.all(math.isfinite(dir)) || math.lengthsq(dir) < 1e-6f) dir = new float2(1, 0);
 
             int idx = 0;
@@ -883,6 +1049,8 @@ public class ObjectFallSimulation : MonoBehaviour
             sleeping[i] = 0;
             sleepCounter[i] = 0;
             ages[i] = 0f;
+            gravityScale[i] = 1f;
+            gravityScalePrev[i] = 1f;
 
             angles[i] = rng.NextFloat(0f, math.PI * 2f);
             spriteIndex[i] = idx;
@@ -900,39 +1068,35 @@ public class ObjectFallSimulation : MonoBehaviour
         argsBuffer = new GraphicsBuffer(GraphicsBuffer.Target.IndirectArguments, 1, sizeof(uint) * 5);
         UpdateArgs((uint)QuadMesh.GetIndexCount(0), 0u, (uint)QuadMesh.GetIndexStart(0), (uint)QuadMesh.GetBaseVertex(0));
 
-        int stride = sizeof(float) * 6;  // 24 byte
-        instanceBufferA = new ComputeBuffer(Capacity, stride, ComputeBufferType.Structured, ComputeBufferMode.SubUpdates);
-        instanceBufferB = new ComputeBuffer(Capacity, stride, ComputeBufferType.Structured, ComputeBufferMode.SubUpdates);
-        useB = false;
-
+        int stride = sizeof(float) * 6;
+        instanceBuffer = new ComputeBuffer(Capacity, stride, ComputeBufferType.Structured);
         if (ObjectMaterial != null)
         {
-            ObjectMaterial.SetBuffer(ParticlesID, instanceBufferA);
+            ObjectMaterial.SetBuffer(ParticlesID, instanceBuffer);
             if (spriteArray != null) ObjectMaterial.SetTexture(SpriteArrayID, spriteArray);
         }
     }
 
     private void ReleaseIndirectRendering()
     {
-        argsBuffer?.Dispose(); argsBuffer = null;
-        instanceBufferA?.Dispose(); instanceBufferA = null;
-        instanceBufferB?.Dispose(); instanceBufferB = null;
+        argsBuffer?.Dispose();
+        argsBuffer = null;
+        instanceBuffer?.Dispose();
+        instanceBuffer = null;
     }
 
     private Mesh CreateUnitQuadMesh()
     {
-        var m = new Mesh { name = "2D_Quad" };
+        Mesh m = new()
+        { name = "2D_Quad" };
         m.SetVertices(new List<Vector3>
-        {
-            new Vector3(-1, -1, 0), new Vector3(1, -1, 0),
-            new Vector3(1,  1, 0), new Vector3(-1,  1, 0)
-        });
+        { new(-1, -1, 0), new(1, -1, 0),
+          new(1, 1, 0), new(-1, 1, 0) });
         m.SetUVs(0, new List<Vector2>
-        {
-            new Vector2(0, 0), new Vector2(1, 0),
-            new Vector2(1, 1), new Vector2(0, 1)
-        });
-        m.SetTriangles(new[] { 0, 1, 2, 0, 2, 3 }, 0, true);
+        { new(0, 0), new(1, 0),
+          new(1, 1), new(0, 1) });
+        m.SetTriangles(new[]
+        { 0, 1, 2, 0, 2, 3 }, 0, true);
         m.RecalculateBounds();
         return m;
     }
@@ -940,7 +1104,8 @@ public class ObjectFallSimulation : MonoBehaviour
     private void UpdateArgs(uint indexCountPerInstance, uint instanceCount, uint startIndex, uint baseVertex)
     {
         if (argsBuffer == null) return;
-        var args = new uint[5] { indexCountPerInstance, instanceCount, startIndex, baseVertex, 0u };
+        uint[] args = new uint[5]
+        { indexCountPerInstance, instanceCount, startIndex, baseVertex, 0u };
         argsBuffer.SetData(args);
     }
 
@@ -953,17 +1118,23 @@ public class ObjectFallSimulation : MonoBehaviour
         }
 
         float2 mn = spPos[0], mx = spPos[0];
-        for (int i = 1; i < spPos.Length; i++) { mn = math.min(mn, spPos[i]); mx = math.max(mx, spPos[i]); }
+        for (int i = 1; i < spPos.Length; i++)
+        {
+            mn = math.min(mn, spPos[i]);
+            mx = math.max(mx, spPos[i]);
+        }
 
         float pad = CorridorWidth * 0.6f + math.max(0.5f, GridCellSize * 2f);
-        var center = new Vector3((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f, 0f);
-        var size   = new Vector3((mx.x - mn.x) + pad * 2f, (mx.y - mn.y) + pad * 2f, 5f);
+        Vector3 center = new((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f, 0f);
+        Vector3 size = new(mx.x - mn.x + pad * 2f, mx.y - mn.y + pad * 2f, 5f);
         drawBounds = new Bounds(center, size);
     }
 
     private void FixedUpdate()
     {
         if (!allocated) return;
+
+        lastHandle.Complete();
 
         swTotal.Restart();
 
@@ -986,12 +1157,13 @@ public class ObjectFallSimulation : MonoBehaviour
 
         if (MobileTuningEnabled)
         {
-            float ft = Time.deltaTime; 
+            float ft = Time.deltaTime;
             if (ft > MobileTargetFrameTime)
             {
                 CollisionIterations = math.max(1, CollisionIterations - 1);
                 NearestSearchWindow = math.max(6, NearestSearchWindow - 2);
             }
+
             if (ft > MobileHardFrameTime)
             {
                 Substeps = 1;
@@ -1005,148 +1177,121 @@ public class ObjectFallSimulation : MonoBehaviour
         if (PathForceActive)
         {
             int lookaheadSamples = math.max(1, (int)math.round(PathForceLookahead / math.max(1e-6f, spStepLen)));
-            var pf = new PathForceJob
-            {
-                Alive = alive,
-                Positions = positions,
-                NearestId = nearestIndices,
-                SpPos = spPos,
-                LookaheadSamples = lookaheadSamples,
-                Strength = PathForceStrength,
-                outAccel = pathAccel,
-                minAbsX = math.clamp(MinAbsX, 0f, 1f),
-            };
+            PathForceJob pf = new()
+            { Alive = alive,
+              Positions = positions,
+              NearestId = nearestIndices,
+              SpPos = spPos,
+              LookaheadSamples = lookaheadSamples,
+              Strength = PathForceStrength,
+              outAccel = pathAccel,
+              minAbsX = math.clamp(MinAbsX, 0f, 1f) };
             hPf = pf.ScheduleParallel(Capacity, 64, default);
         }
-        else hPf = default;
-
-        var integrate = new IntegrateJob
+        else
         {
-            DT = dt,
-            Substeps = math.max(1, Substeps),
-            LinearDamping = Mathf.Clamp01(LinearDamping),
-            Accel = new float2(0f, Gravity),
-            Alive = alive,
-            Sleeping = sleeping,
-            Positions = positions,
-            Velocities = velocities,
-            PathAccel = pathAccel,
-            PathForceEnabled = PathForceActive ? 1f : 0f,
-            Ages = ages,
-            RotationEnabled = RotationEnabled ? 1f : 0f,
-            SpinStrength = SpinStrength,
-            Angles = angles
-        };
-        var hIntegrate = integrate.ScheduleParallel(Capacity, 64, hPf);
+            hPf = default;
+        }
+
+        IntegrateJob integrate = new()
+        { DT = dt,
+          Substeps = math.max(1, Substeps),
+          LinearDamping = Mathf.Clamp01(LinearDamping),
+          Accel = new float2(0f, Gravity),
+          Alive = alive,
+          Sleeping = sleeping,
+          Positions = positions,
+          Velocities = velocities,
+          PathAccel = pathAccel,
+          PathForceEnabled = PathForceActive ? 1f : 0f,
+          GravityScale = gravityScale,
+          Ages = ages,
+          RotationEnabled = RotationEnabled ? 1f : 0f,
+          SpinStrength = SpinStrength,
+          Angles = angles };
+        JobHandle hIntegrate = integrate.ScheduleParallel(Capacity, 64, hPf);
 
         int iters = math.max(1, CollisionIterations);
         cellMap.Clear();
 
-        var build = new BuildGridJob
-        {
-            Positions = positions,
-            Alive = alive,
-            Origin = gridOrigin,
-            InvCell = invCell,
-            Writer = cellMap.AsParallelWriter()
-        };
-        var hGrid = build.ScheduleParallel(Capacity, 64, hIntegrate);
+        BuildGridJob build = new()
+        { Positions = positions,
+          Alive = alive,
+          Origin = gridOrigin,
+          InvCell = invCell,
+          Writer = cellMap.AsParallelWriter() };
+        JobHandle hGrid = build.ScheduleParallel(Capacity, 64, hIntegrate);
 
         JobHandle hPrevApply = hGrid;
 
         for (int iter = 0; iter < iters; iter++)
         {
-            var projPeer = new CollisionProjectJob
-            {
-                Positions = positions,
-                Alive = alive,
-                CellMap = cellMap,
-                Origin = gridOrigin,
-                InvCell = invCell,
-                Radius = ColliderRadius,
-                Stiffness = ProjectionStiffness,
-                ProjDelta = projDelta
-            };
-            var hPeer = projPeer.ScheduleParallel(Capacity, 64, hPrevApply);
+            CombinedProjectionJob proj = new()
+            { Positions = positions,
+              Alive = alive,
+              CellMap = cellMap,
+              Origin = gridOrigin,
+              InvCell = invCell,
+              Radius = ColliderRadius,
+              Stiffness = ProjectionStiffness,
+              ObstPos = obstaclePos.IsCreated ? obstaclePos : default,
+              ObstHalf = obstacleHalf.IsCreated ? obstacleHalf : default,
+              ObstBlock = obstacleBlock.IsCreated ? obstacleBlock : default,
+              ParticleRadius = ColliderRadius,
+              OutPeer = projDelta,
+              OutObs = projDeltaObs };
+            JobHandle hProj = proj.ScheduleParallel(Capacity, 64, hPrevApply);
 
-            JobHandle hObsDep = hPrevApply;
-            if (obstaclePos.IsCreated && obstaclePos.Length > 0)
-            {
-                var projObs = new ObstacleProjectJob
-                {
-                    Positions = positions,
-                    Alive = alive,
-                    ObstPos = obstaclePos,
-                    ObstHalf = obstacleHalf,
-                    ObstBlock = obstacleBlock,
-                    ParticleRadius = ColliderRadius,
-                    Stiffness = ProjectionStiffness,
-                    ProjDeltaObs = projDeltaObs
-                };
-                hObsDep = projObs.ScheduleParallel(Capacity, 64, hPrevApply);
-            }
-
-            var hAfterProj = JobHandle.CombineDependencies(hPeer, hObsDep);
-
-            var applyPeer = new ApplyProjectionJob
-            {
-                DT = dt,
-                VelFactor = VelocityFromProjection,
-                Alive = alive,
-                ProjDelta = projDelta,
-                Positions = positions,
-                Velocities = velocities
-            };
-            var hApplyPeer = applyPeer.ScheduleParallel(Capacity, 64, hAfterProj);
-
-            JobHandle hApplyAll = hApplyPeer;
-            if (obstaclePos.IsCreated && obstaclePos.Length > 0)
-            {
-                var applyObs = new ApplyProjectionJob
-                {
-                    DT = dt,
-                    VelFactor = VelocityFromProjection,
-                    Alive = alive,
-                    ProjDelta = projDeltaObs,
-                    Positions = positions,
-                    Velocities = velocities
-                };
-                hApplyAll = applyObs.ScheduleParallel(Capacity, 64, hApplyPeer);
-            }
-
-            hPrevApply = hApplyAll;
+            ApplyProjectionDualJob apply = new()
+            { DT = dt,
+              VelFactor = VelocityFromProjection,
+              Alive = alive,
+              Peer = projDelta,
+              Obs = projDeltaObs,
+              Positions = positions,
+              Velocities = velocities };
+            hPrevApply = apply.ScheduleParallel(Capacity, 64, hProj);
         }
 
-        var corridor = new CorridorConstraintJob
-        {
-            HalfWidth = math.max(0.001f, HalfWidth),
-            Restitution = Mathf.Clamp01(Restitution),
-            SearchWindow = math.max(2, NearestSearchWindow),
-            SpPos = spPos,
-            SpTan = spTan,
-            Alive = alive,
-            Positions = positions,
-            Velocities = velocities,
-            NearestIndices = nearestIndices
-        };
-        var hCorridor = corridor.ScheduleParallel(Capacity, 64, hPrevApply);
+        CorridorConstraintJob corridor = new()
+        { HalfWidth = math.max(0.001f, HalfWidth),
+          Restitution = Mathf.Clamp01(Restitution),
+          SearchWindow = math.max(2, NearestSearchWindow),
+          SpPos = spPos,
+          SpTan = spTan,
+          Alive = alive,
+          Positions = positions,
+          Velocities = velocities,
+          NearestIndices = nearestIndices };
+        JobHandle hCorridor = corridor.ScheduleParallel(Capacity, 64, hPrevApply);
 
-        var sleep = new SleepCheckJob
-        {
-            Alive = alive,
-            Velocities = velocities,
-            ProjPeer = projDelta,
-            ProjObs = projDeltaObs,
-            SleepVel2 = SleepVel * SleepVel,
-            WakeVel2 = WakeVel * WakeVel,
-            SleepProjTol = SleepProjTol,
-            SleepFrames = math.max(1, SleepFrames),
-            Sleeping = sleeping,
-            SleepCounter = sleepCounter
-        };
-        var hAfterSleep = sleep.ScheduleParallel(Capacity, 64, hCorridor);
+        NativeArray<float>.Copy(gravityScale, gravityScalePrev, Capacity);
 
-        JobHandle hFinal = hAfterSleep;
+        CombinedStateJob state = new()
+        { Alive = alive,
+          Velocities = velocities,
+          ProjPeer = projDelta,
+          ProjObs = projDeltaObs,
+          SleepVel2 = SleepVel * SleepVel,
+          WakeVel2 = WakeVel * WakeVel,
+          SleepProjTol = SleepProjTol,
+          SleepFrames = math.max(1, SleepFrames),
+          Sleeping = sleeping,
+          SleepCounter = sleepCounter,
+
+          Dt = dt,
+          MinSpeed = math.max(1e-5f, GravMinSpeed),
+          MaxSpeed = math.max(GravMinSpeed + 1e-5f, GravMaxSpeed),
+          BlockedProjTol = math.max(1e-7f, GravBlockedProj),
+          MinScale = math.clamp(GravMinScale, 0f, 1f),
+          RecoveryRate = math.max(0f, GravRecoveryRate),
+          DecayRate = math.max(0f, GravDecayRate),
+          AdaptiveEnabled = AdaptiveGravityEnabled ? 1f : 0f,
+          PrevScale = gravityScalePrev,
+          OutScale = gravityScale };
+        JobHandle hAfterState = state.ScheduleParallel(Capacity, 64, hCorridor);
+
+        JobHandle hFinal = hAfterState;
         NativeList<int> toDespawn = default;
         if (DespawnBelowYEnabled || DespawnScanRequested)
         {
@@ -1154,17 +1299,17 @@ public class ObjectFallSimulation : MonoBehaviour
             int reserve = math.max(256, activeIds.Length / 8);
             toDespawn.Capacity = math.max(toDespawn.Capacity, reserve);
 
-            var despawn = new DespawnBelowYJob
-            {
-                Alive = alive,
-                Positions = positions,
-                DespawnY = DespawnY,
-                ToDespawn = toDespawn.AsParallelWriter()
-            };
-            hFinal = despawn.ScheduleParallel(Capacity, 64, hAfterSleep);
+            DespawnBelowYJob despawn = new()
+            { Alive = alive,
+              Positions = positions,
+              DespawnY = DespawnY,
+              ToDespawn = toDespawn.AsParallelWriter() };
+            hFinal = despawn.ScheduleParallel(Capacity, 64, hAfterState);
         }
 
-        hFinal.Complete();
+        lastHandle = hFinal;
+
+        lastHandle.Complete();
 
         if (toDespawn.IsCreated)
         {
@@ -1178,6 +1323,8 @@ public class ObjectFallSimulation : MonoBehaviour
                     alive[id] = 0;
                     sleeping[id] = 0;
                     sleepCounter[id] = 0;
+                    gravityScale[id] = 1f;
+                    gravityScalePrev[id] = 1f;
                     freeIds.Add(id);
                     activeCount = math.max(0, activeCount - 1);
                 }
@@ -1190,6 +1337,7 @@ public class ObjectFallSimulation : MonoBehaviour
                 if (id >= 0 && id < alive.Length && alive[id] != 0)
                     activeIds[write++] = id;
             }
+
             activeIds.ResizeUninitialized(write);
 
             toDespawn.Dispose();
@@ -1212,105 +1360,52 @@ public class ObjectFallSimulation : MonoBehaviour
     private void Update()
     {
         if (!allocated) return;
+
+        lastHandle.Complete();
         UploadInstancesAndDraw();
     }
-    
+
     private void UploadInstancesAndDraw()
     {
-        if (ObjectMaterial == null || QuadMesh == null || argsBuffer == null) return;
+        if (ObjectMaterial == null || QuadMesh == null || argsBuffer == null || instanceBuffer == null) return;
 
-        int live = math.clamp(activeCount, 0, MaxActive);
-        if (live == 0)
+        gpuPackets.Clear();
+        gpuPackets.Capacity = math.max(gpuPackets.Capacity, math.max(256, activeCount + 1024));
+
+        int sortMode = SortBy == SortMode.ByAge ? 1 : SortBy == SortMode.ById ? 2 : 0;
+
+        PackGPUJobA pack = new()
+        { Alive = alive,
+          Positions = positions,
+          Angles = angles,
+          SpriteIndex = spriteIndex,
+          Ages = ages,
+          ColliderRadius = ColliderRadius,
+          SortMode = sortMode,
+          Writer = gpuPackets.AsParallelWriter() };
+
+        JobHandle hPack = pack.ScheduleParallel(Capacity, 64, default);
+        hPack.Complete();
+
+        NativeArray<ParticleGPU> arr = gpuPackets.AsArray();
+        int n = arr.Length;
+
+        if (CpuFrontToBackSort && n > 1)
         {
-            UpdateArgs((uint)QuadMesh.GetIndexCount(0), 0u, (uint)QuadMesh.GetIndexStart(0), (uint)QuadMesh.GetBaseVertex(0));
-            return;
+            ParticleGPU[] managed = new ParticleGPU[n];
+            arr.CopyTo(managed);
+            Array.Sort(managed, (a, b) => a.SortKey.CompareTo(b.SortKey));
+            if (!SortAscending) Array.Reverse(managed);
+            instanceBuffer.SetData(managed, 0, 0, n);
         }
-
-        useB = !useB;
-        var dst = useB ? instanceBufferB : instanceBufferA;
-
-        int scanLimit = math.min(live, activeIds.Length);
-
-        if (!CpuFrontToBackSort || SortBy == SortMode.None)
+        else
         {
-            var writer = dst.BeginWrite<ParticleGPU>(0, scanLimit);
-            int w = 0;
-            for (int k = 0; k < scanLimit; k++)
-            {
-                int i = activeIds[k];
-                if ((uint)i >= (uint)positions.Length || alive[i] == 0) continue;
-
-                float2 p = positions[i];
-
-                float sortKey = 0f;
-                if (SortBy == SortMode.ByAge) sortKey = ages.IsCreated ? ages[i] : 0f;
-                else if (SortBy == SortMode.ById) sortKey = i;
-
-                writer[w] = new ParticleGPU
-                {
-                    X = p.x,
-                    Y = p.y,
-                    R = ColliderRadius,
-                    Angle = angles[i],
-                    SpriteIndex = spriteIndex[i],
-                    SortKey = sortKey,
-                };
-                w++;
-            }
-
-            dst.EndWrite<ParticleGPU>(w);
-            UpdateArgs((uint)QuadMesh.GetIndexCount(0), (uint)w, (uint)QuadMesh.GetIndexStart(0), (uint)QuadMesh.GetBaseVertex(0));
-            if (w > 0) Graphics.DrawMeshInstancedIndirect(QuadMesh, 0, ObjectMaterial, drawBounds, argsBuffer);
-            return;
+            instanceBuffer.SetData(arr);
         }
-
-        if (sortScratch == null || sortScratch.Length < scanLimit) sortScratch = new SortEntry[math.ceilpow2(scanLimit)];
-
-        int n = 0;
-        for (int k = 0; k < scanLimit; k++)
-        {
-            int id = activeIds[k];
-            if ((uint)id >= (uint)positions.Length || alive[id] == 0) continue;
-
-            float key = 0f;
-            if (SortBy == SortMode.ByAge) key = ages.IsCreated ? ages[id] : 0f;
-            else key = id;
-
-            sortScratch[n++] = new SortEntry { Key = key, Id = id };
-        }
-
-        if (n <= 0)
-        {
-            UpdateArgs((uint)QuadMesh.GetIndexCount(0), 0u, (uint)QuadMesh.GetIndexStart(0), (uint)QuadMesh.GetBaseVertex(0));
-            return;
-        }
-
-        Array.Sort(sortScratch, 0, n); 
-        if (!SortAscending)
-        {
-            Array.Reverse(sortScratch, 0, n);
-        }
-
-        var writerSorted = dst.BeginWrite<ParticleGPU>(0, n);
-        for (int j = 0; j < n; j++)
-        {
-            int i = sortScratch[j].Id;
-            float2 p = positions[i];
-
-            writerSorted[j] = new ParticleGPU
-            {
-                X = p.x,
-                Y = p.y,
-                R = ColliderRadius,
-                Angle = angles[i],
-                SpriteIndex = (float)spriteIndex[i],
-                SortKey = sortScratch[j].Key
-            };
-        }
-        dst.EndWrite<ParticleGPU>(n);
 
         UpdateArgs((uint)QuadMesh.GetIndexCount(0), (uint)n, (uint)QuadMesh.GetIndexStart(0), (uint)QuadMesh.GetBaseVertex(0));
-        Graphics.DrawMeshInstancedIndirect(QuadMesh, 0, ObjectMaterial, drawBounds, argsBuffer);
+        if (n > 0)
+            Graphics.DrawMeshInstancedIndirect(QuadMesh, 0, ObjectMaterial, drawBounds, argsBuffer);
     }
 
     private void OnDrawGizmosSelected()
@@ -1320,7 +1415,7 @@ public class ObjectFallSimulation : MonoBehaviour
             Gizmos.color = Color.white;
             for (int i = 0; i < spPos.Length - 1; i++)
                 Gizmos.DrawLine(new Vector3(spPos[i].x, spPos[i].y, 0f),
-                                new Vector3(spPos[i + 1].x, spPos[i + 1].y, 0f));
+                    new Vector3(spPos[i + 1].x, spPos[i + 1].y, 0f));
 
             Gizmos.color = Color.yellow;
             float hw = HalfWidth;
@@ -1328,13 +1423,13 @@ public class ObjectFallSimulation : MonoBehaviour
             {
                 float2 t0 = spTan[i];
                 float2 n0 = math.normalizesafe(new float2(-t0.y, t0.x), new float2(0, 1));
-                Vector3 l0 = new Vector3(spPos[i].x + n0.x * hw, spPos[i].y + n0.y * hw, 0f);
-                Vector3 r0 = new Vector3(spPos[i].x - n0.x * hw, spPos[i].y - n0.y * hw, 0f);
+                Vector3 l0 = new(spPos[i].x + n0.x * hw, spPos[i].y + n0.y * hw, 0f);
+                Vector3 r0 = new(spPos[i].x - n0.x * hw, spPos[i].y - n0.y * hw, 0f);
 
                 float2 t1 = spTan[i + 1];
                 float2 n1 = math.normalizesafe(new float2(-t1.y, t1.x), new float2(0, 1));
-                Vector3 l1 = new Vector3(spPos[i + 1].x + n1.x * hw, spPos[i + 1].y + n1.y * hw, 0f);
-                Vector3 r1 = new Vector3(spPos[i + 1].x - n1.x * hw, spPos[i + 1].y - n1.y * hw, 0f);
+                Vector3 l1 = new(spPos[i + 1].x + n1.x * hw, spPos[i + 1].y + n1.y * hw, 0f);
+                Vector3 r1 = new(spPos[i + 1].x - n1.x * hw, spPos[i + 1].y - n1.y * hw, 0f);
 
                 Gizmos.DrawLine(l0, l1);
                 Gizmos.DrawLine(r0, r1);

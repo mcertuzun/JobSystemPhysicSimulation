@@ -181,8 +181,8 @@
     }
   ],
   "corridorWidth": 1.0,
-  "colliderRadius": 0.06,
-  "gridCellSize": 0.12,
+  "colliderRadius": 0.1,
+  "gridCellSize": 0.5,
   "tileWidthPx": 64,
   "tileHeightPx": 64,
   "mapWidthTiles": 100,

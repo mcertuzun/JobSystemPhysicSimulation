@@ -251,11 +251,11 @@ MonoBehaviour:
   SpawnPoint: {fileID: 1541960473}
   QuadMesh: {fileID: 0}
   ObjectMaterial: {fileID: 2100000, guid: c1916ff1792d45e409f8d9bcc45ef4d5, type: 2}
-  Capacity: 1000
-  SpawnPerSecond: 50
+  Capacity: 300
+  SpawnPerSecond: 25
   BurstOnStart: 0
   MaxActive: 1000
-  SpawnAngleDeg: 0
+  SpawnAngleDeg: 10.47
   UseCircleJitter: 1
   SpawnCircleJitterRadius: 0.5
   SpawnBoxJitter: {x: 0.5, y: 0.2}
@@ -270,20 +270,27 @@ MonoBehaviour:
   SortBy: 1
   CpuFrontToBackSort: 0
   SortAscending: 1
-  InitialSpeed: 0.5
-  Gravity: -9.81
+  InitialSpeed: 2.78
+  Gravity: -9.84
   Restitution: 0.9
-  LinearDamping: 0.02
+  LinearDamping: 0.03
   Substeps: 1
   ColliderRadius: 0.12
   CollisionIterations: 2
   GridCellSize: 0.12
-  ProjectionStiffness: 1
-  VelocityFromProjection: 1
+  ProjectionStiffness: 0.6
+  VelocityFromProjection: 0.95
   NearestSearchWindow: 12
   CorridorWidth: 1
   RotationEnabled: 1
-  SpinStrength: 0.5
+  SpinStrength: 0.02
+  AdaptiveGravityEnabled: 1
+  GravMinSpeed: 0.05
+  GravMaxSpeed: 0.2
+  GravBlockedProj: 0.002
+  GravMinScale: 0.05
+  GravRecoveryRate: 2.5
+  GravDecayRate: 6
   PathForceActive: 0
   PathForceLookahead: 1
   PathForceStrength: 8
